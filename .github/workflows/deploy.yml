@@ -1,0 +1,88 @@
+name: CI/CD Pipeline for Blys App
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ap-south-1
+  ECR_REPOSITORY: blys-app
+  ECS_CLUSTER: blys-cluster
+  ECS_SERVICE: blys-app-service
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  build-test-scan-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+
+    # 1. Checkout code
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # 2. Lint Dockerfile
+    - name: Lint Dockerfile
+      uses: hadolint/hadolint-action@v3.1.0
+      with:
+        dockerfile: Dockerfile
+
+    # 3. Configure AWS credentials (OIDC)
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v6
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    # 4. Login to Amazon ECR
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    # 5. Build Docker image (correct tagging)
+    - name: Build Docker image
+      run: |
+        IMAGE_URI=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${IMAGE_TAG}
+
+        docker build -t $IMAGE_URI .
+
+        echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
+
+    # 6. Security Scan (Trivy)
+    - name: Security Scan (Trivy)
+      uses: aquasecurity/trivy-action@0.28.0
+      with:
+        image-ref: ${{ env.IMAGE_URI }}
+        format: table
+        severity: HIGH,CRITICAL
+        exit-code: 1
+
+    # 7. Push image to ECR
+    - name: Push image to ECR
+      run: |
+        docker push $IMAGE_URI
+
+    # 8. Deploy to ECS (Rolling Update)
+    - name: Deploy to ECS
+      run: |
+        aws ecs update-service \
+          --cluster $ECS_CLUSTER \
+          --service $ECS_SERVICE \
+          --force-new-deployment
+
+    # 9. Wait for stability
+    - name: Wait for ECS stability
+      run: |
+        aws ecs wait services-stable \
+          --cluster $ECS_CLUSTER \
+          --services $ECS_SERVICE
+
+    # 10. Success log
+    - name: Deployment Success
+      run: |
+        echo "Deployment successful"
+        echo "Image: $IMAGE_URI"
