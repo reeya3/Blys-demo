@@ -129,10 +129,11 @@ lint ──► build-scan-push ──► deploy
 
 **Required GitHub secrets:**
 
+Path: Repo → Settings → Secrets and variables → Actions → Secrets
+
 | Secret | Description |
 |---|---|
 | `AWS_ROLE_ARN` | ARN of the IAM role assumed via OIDC |
-| `SLACK_WEBHOOK_URL` | Slack incoming webhook for failure alerts (optional) |
 
 **Image tagging:** Every image gets a `<git-sha>` tag (immutable, used for deployment).
 
