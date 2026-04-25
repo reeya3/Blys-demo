@@ -25,7 +25,6 @@ variable "app_port" {
 variable "container_image" {
   description = "Full container image URI"
   type        = string
-  default     = "public.ecr.aws/blys/blys-app:v1.0.0"
 }
 
 variable "desired_count" {
